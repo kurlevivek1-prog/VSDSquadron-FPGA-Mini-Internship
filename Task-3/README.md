@@ -1,58 +1,88 @@
-Task-3: Design a Multi-Register GPIO IP with Software Control
-Internship: VSDSquadron FPGA Mini
-Task Duration: 4 days | Mandatory
-Hardware Validation: Optional
-Tool: GitHub Codespace + iverilog + RISC-V GCC toolchain
+# Task-3: Design a Multi-Register GPIO IP with Software Control
 
-Table of Contents
+**Internship:** VSDSquadron FPGA Mini  
+**Task Duration:** 4 days | Mandatory  
+**Hardware Validation:** Optional  
+**Tool:** GitHub Codespace + iverilog + RISC-V GCC toolchain
 
-Objective
-Register Map
-Step 1 — Study and Plan
-Step 2 — Implement Multi-Register RTL
-Step 3 — Integrate into the SoC
-Step 4 — Software Validation
-Results Summary
-Key Learnings
+---
 
+## Table of Contents
+- [Objective](#objective)
+- [Register Map](#register-map)
+- [Step 1 — Study and Plan](#step-1--study-and-plan)
+- [Step 2 — Implement Multi-Register RTL](#step-2--implement-multi-register-rtl)
+- [Step 3 — Integrate into the SoC](#step-3--integrate-into-the-soc)
+- [Step 4 — Software Validation](#step-4--software-validation)
+- [Results Summary](#results-summary)
+- [Key Learnings](#key-learnings)
 
-Objective
+---
+
+## Objective
+
 Extend the simple GPIO IP from Task-2 into a realistic, multi-register, software-controlled IP, similar to what exists in production SoCs.
+
 This task focuses on:
+- Designing a proper **register map**
+- Handling **multiple registers** inside one IP
+- Strengthening understanding of **memory-mapped I/O**
+- Validating end-to-end control from software to hardware
 
-Designing a proper register map
-Handling multiple registers inside one IP
-Strengthening understanding of memory-mapped I/O
-Validating end-to-end control from software to hardware
+---
 
+## Register Map
 
-Register Map
-IP Name: GPIO Control IP (Direction + Data)
-Base Address: 0x400020
-OffsetRegister NameR/WDescription0x00GPIO_DATAR/WGPIO output data register0x04GPIO_DIRR/WDirection register (1 = output, 0 = input)0x08GPIO_READRReadback register — reflects current pin state
-How Address Offset Decoding Works
-Inside the GPIO module, addr[3:2] selects which register is accessed:
+**IP Name:** GPIO Control IP (Direction + Data)  
+**Base Address:** `0x400020`
+
+| Offset | Register Name | R/W | Description |
+|--------|---------------|-----|-------------|
+| 0x00 | GPIO_DATA | R/W | GPIO output data register |
+| 0x04 | GPIO_DIR | R/W | Direction register (1 = output, 0 = input) |
+| 0x08 | GPIO_READ | R | Readback register — reflects current pin state |
+
+### How Address Offset Decoding Works
+
+Inside the GPIO module, `addr[3:2]` selects which register is accessed:
+
+```
 addr[3:2] = 2'b00  →  offset 0x00  →  GPIO_DATA
 addr[3:2] = 2'b01  →  offset 0x04  →  GPIO_DIR
 addr[3:2] = 2'b10  →  offset 0x08  →  GPIO_READ
-How Direction Affects Behavior
+```
+
+### How Direction Affects Behavior
+
+```
 gpio_out  = GPIO_DATA & GPIO_DIR   (only DIR=1 pins are driven)
 gpio_read = gpio_data & gpio_dir   (reflects driven value for outputs)
-Example:
+```
+
+**Example:**
+```
 GPIO_DATA = 1111 1111  (want all pins HIGH)
 GPIO_DIR  = 0000 1111  (only lower 4 pins are outputs)
                   &
 gpio_out  = 0000 1111  (only lower 4 pins actually go HIGH)
 GPIO_READ = 0000 1111  = 15 decimal ✅
+```
 
-Step 1 — Study and Plan
+---
 
-No coding in this step. Review Task-2 and plan the new register structure.
+## Step 1 — Study and Plan
 
-Review Task-2 GPIO (1 register)
-bashcat /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out.v
-Output:
-verilogmodule gpio_out (
+> **No coding in this step.** Review Task-2 and plan the new register structure.
+
+### Review Task-2 GPIO (1 register)
+
+```bash
+cat /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out.v
+```
+
+**Output:**
+```verilog
+module gpio_out (
     input  wire        clk,
     input  wire        rst,
     input  wire        valid,
@@ -77,24 +107,47 @@ verilogmodule gpio_out (
 
     assign gpio_out = gpio_reg;
 endmodule
-What Changes in Task-3
-FeatureTask-2Task-3Registers1 (gpio_reg)3 (data, dir, read)Address decodingNone inside moduleaddr[3:2] offset decodingDirection controlNoYes (gpio_dir_reg)ReadbackAlways returns written valueReturns data & dir (actual pin state)Outputgpio_reg directlygpio_data_reg & gpio_dir_reg
-Internal Signals Needed
+```
+
+### What Changes in Task-3
+
+| Feature | Task-2 | Task-3 |
+|---------|--------|--------|
+| Registers | 1 (`gpio_reg`) | 3 (`data`, `dir`, `read`) |
+| Address decoding | None inside module | `addr[3:2]` offset decoding |
+| Direction control | No | Yes (`gpio_dir_reg`) |
+| Readback | Always returns written value | Returns `data & dir` (actual pin state) |
+| Output | `gpio_reg` directly | `gpio_data_reg & gpio_dir_reg` |
+
+### Internal Signals Needed
+
+```
 gpio_data_reg [31:0]   — stores output values
 gpio_dir_reg  [31:0]   — stores direction bits
 gpio_read_reg [31:0]   — computed as gpio_data & gpio_dir
-SoC Changes Needed
+```
 
-gpio_out.v → create new gpio_out_v2.v with 3 registers
-riscv.v → update instantiation to use gpio_out_v2 and connect .addr(mem_addr)
+### SoC Changes Needed
 
+- `gpio_out.v` → create new `gpio_out_v2.v` with 3 registers
+- `riscv.v` → update instantiation to use `gpio_out_v2` and connect `.addr(mem_addr)`
 
-Step 2 — Implement Multi-Register RTL
-Create New GPIO v2 File
+---
+
+## Step 2 — Implement Multi-Register RTL
+
+### Create New GPIO v2 File
+
 Open a new file (keep Task-2 file untouched):
-bashcode /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
+
+```bash
+code /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
+```
+
 Paste the complete code:
-verilogmodule gpio_out_v2 (
+
+```verilog
+module gpio_out_v2 (
     input  wire        clk,
     input  wire        rst,
     input  wire        valid,
@@ -162,33 +215,68 @@ verilogmodule gpio_out_v2 (
     end
 
 endmodule
-Save with Ctrl + S, then verify:
-bashcat /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
+```
+
+Save with `Ctrl + S`, then verify:
+
+```bash
+cat /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
+```
+
 Verify module name is correct:
-bashhead -1 /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
-Output:
+
+```bash
+head -1 /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out_v2.v
+```
+
+**Output:**
+```
 module gpio_out_v2 (
+```
+
 Verify both files exist side by side:
-bashls -l /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out*.v
-Output:
+
+```bash
+ls -l /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/gpio_out*.v
+```
+
+**Output:**
+```
 -rw-rw-rw- 1 root root  509 May 26 07:56 gpio_out.v
 -rw-rw-rw- 1 root root 1482 May 27 12:10 gpio_out_v2.v
+```
 
-📸 Screenshot here — shows both files exist and module name is gpio_out_v2
+> 📸 **Screenshot here** — shows both files exist and module name is `gpio_out_v2`
 
+---
 
-Step 3 — Integrate into the SoC
-Update riscv.v to Use New Module
-The instance name stays GPIO, only the module type changes from gpio_out to gpio_out_v2:
-bashsed -i 's/gpio_out GPIO(/gpio_out_v2 GPIO(/' \
+## Step 3 — Integrate into the SoC
+
+### Update riscv.v to Use New Module
+
+The instance name stays `GPIO`, only the module type changes from `gpio_out` to `gpio_out_v2`:
+
+```bash
+sed -i 's/gpio_out GPIO(/gpio_out_v2 GPIO(/' \
 /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/riscv.v
-Also connect the addr signal (required for offset decoding):
-bashsed -i 's/   .we(mem_wstrb),/   .we(mem_wstrb),\n   .addr(mem_addr),/' \
+```
+
+Also connect the `addr` signal (required for offset decoding):
+
+```bash
+sed -i 's/   .we(mem_wstrb),/   .we(mem_wstrb),\n   .addr(mem_addr),/' \
 /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/riscv.v
+```
+
 Verify the GPIO instantiation block looks correct:
-bashsed -n '384,402p' /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/riscv.v
-Output:
-verilog   // GPIO instance
+
+```bash
+sed -n '384,402p' /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL/riscv.v
+```
+
+**Output:**
+```verilog
+   // GPIO instance
 wire [31:0] gpio_rdata;
 wire [31:0] gpio_pins;
 gpio_out_v2 GPIO(
@@ -205,23 +293,38 @@ gpio_out_v2 GPIO(
     mem_wordaddr[IO_UART_CNTL_bit] ? {22'b0, !uart_ready, 9'b0} :
     mem_wordaddr[IO_GPIO_bit]      ? gpio_rdata                  :
                                      32'b0;
+```
 
-📸 Screenshot here — shows gpio_out_v2 and .addr(mem_addr) in the instantiation
+> 📸 **Screenshot here** — shows `gpio_out_v2` and `.addr(mem_addr)` in the instantiation
 
-Compile to Verify Integration
-bashcd /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL
+### Compile to Verify Integration
+
+```bash
+cd /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/RTL
 iverilog -o test_gpio_v2 -DBENCH riscv.v gpio_out_v2.v ice40_primitives.v
+```
+
 Confirm the compiled binary exists:
-bashls -l test_gpio_v2
-Output:
+
+```bash
+ls -l test_gpio_v2
+```
+
+**Output:**
+```
 -rwxr-xr-x 1 root root 67285 May 27 12:27 test_gpio_v2
+```
 
-📸 Screenshot here — zero errors, binary created
+> 📸 **Screenshot here** — zero errors, binary created
 
+---
 
-Step 4 — Software Validation
-Create C Test Program
-bashcat > /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/Firmware/gpio_v2_test.c << 'EOF'
+## Step 4 — Software Validation
+
+### Create C Test Program
+
+```bash
+cat > /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/Firmware/gpio_v2_test.c << 'EOF'
 #include <stdio.h>
 #include <stdint.h>
 
@@ -258,10 +361,17 @@ int main() {
     return 0;
 }
 EOF
-Build the Firmware
-bashcd /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/Firmware
+```
+
+### Build the Firmware
+
+```bash
+cd /workspaces/vsd-riscv2/vsdfpga_labs/basicRISCV/Firmware
 make gpio_v2_test.bram.hex
-Output:
+```
+
+**Output:**
+```
 riscv64-unknown-elf-gcc ... -c gpio_v2_test.c
 riscv64-unknown-elf-ld ... -o gpio_v2_test.bram.elf
 ./firmware_words gpio_v2_test.bram.elf -ram 6144 -max_addr 6144 -out gpio_v2_test.bram.hex
@@ -272,10 +382,17 @@ Code size: 702 words ( total RAM size: 1536 words )
 Occupancy: 45%
    SAVE HEX: gpio_v2_test.bram.hex
 cp gpio_v2_test.bram.hex ../RTL/firmware.hex
-Run Simulation
-bashcd ../RTL
+```
+
+### Run Simulation
+
+```bash
+cd ../RTL
 vvp test_gpio_v2
-Output:
+```
+
+**Output:**
+```
 === GPIO V2 TEST START ===
 DIR set to 0xFF (all outputs)
 DATA written: 0xAA
@@ -283,39 +400,75 @@ READ value: 170
 DIR=0x0F DATA=0xFF READ: 15
 === GPIO V2 TEST DONE ===
 riscv.v:286: $finish called at 175725942 (1s)
+```
 
-📸 Screenshot here — shows correct READ values 170 and 15
+> 📸 **Screenshot here** — shows correct READ values 170 and 15
 
+---
 
-Results Summary
-Test Results
-TestGPIO_DIRGPIO_DATAGPIO_READExpectedStatusAll pins output0xFF0xAA170170 (0xAA)✅Lower 4 output only0x0F0xFF1515 (0x0F)✅
-Why These Results Are Correct
-Test 1 — DIR=0xFF, DATA=0xAA → READ=170
+## Results Summary
+
+### Test Results
+
+| Test | GPIO_DIR | GPIO_DATA | GPIO_READ | Expected | Status |
+|------|----------|-----------|-----------|----------|--------|
+| All pins output | 0xFF | 0xAA | 170 | 170 (0xAA) | ✅ |
+| Lower 4 output only | 0x0F | 0xFF | 15 | 15 (0x0F) | ✅ |
+
+### Why These Results Are Correct
+
+**Test 1 — DIR=0xFF, DATA=0xAA → READ=170**
+```
 DATA = 1010 1010  (0xAA)
 DIR  = 1111 1111  (0xFF — all outputs)
 READ = 1010 1010  = 170 decimal ✅
-Test 2 — DIR=0x0F, DATA=0xFF → READ=15
+```
+
+**Test 2 — DIR=0x0F, DATA=0xFF → READ=15**
+```
 DATA = 1111 1111  (0xFF — want all HIGH)
 DIR  = 0000 1111  (0x0F — only lower 4 are outputs)
 READ = 0000 1111  = 15 decimal ✅
 Direction control working: upper 4 pins ignored ✅
+```
 
-Key Learnings
+---
 
-Task-2 had 1 register. Task-3 has 3 registers with proper address offset decoding.
-addr[3:2] selects which register inside the GPIO module — same concept as mem_addr[22] selects IO vs RAM in the SoC.
-Direction register (GPIO_DIR) gates the output: gpio_out = GPIO_DATA & GPIO_DIR. Pins with DIR=0 are not driven.
-Keeping gpio_out.v (Task-2) and creating a new gpio_out_v2.v (Task-3) is the professional way to version RTL — old code stays safe.
-The addr port must be connected in the SoC instantiation for offset decoding to work — missing this was the root cause of READ=0 during debugging.
-Clean synchronous design (all writes in always @(posedge clk)) prevents latch behavior.
+## Design Notes and Limitations
 
+- **Shared address decode.** In this version the GPIO instance uses `.valid(isIO)`, and the SoC's one-hot decode is not exclusive. `GPIO_DIR` (`0x400024`) has word bit 0 set, so writing it also writes the LED register, and `GPIO_READ` (`0x400028`) is not affected. Register read-back results are correct, but the LEDs mirror the DIR write. Gating `valid` with `mem_wordaddr[IO_GPIO_bit]` (as done in Task-2) is the cleaner fix.
+- **Hardware variant.** The board build used an inline version of the registers inside `riscv.v` (word bits 3, 4, 5) instead of the `gpio_out_v2` module. Byte addresses there are `GPIO_DATA = 0x400020`, `GPIO_DIR = 0x400040`, `GPIO_READ = 0x400080`. The simulation results in this README use the module version at `0x400020 / 0x400024 / 0x400028`.
+- **UART busy bit.** The SoC returns `{22'b0, !uart_ready, 9'b0}` for the UART status, so bit 9 means *busy*. Firmware must wait with `while (UART_CNTL & (1 << 9));`.
+- **Pins.** `gpio_out` is not routed to FPGA pads in this design; it is observed through software readback.
 
-Files in This Repository
-FileDescriptiongpio_out_v2.vMulti-register GPIO IP RTL (Task-3)gpio_v2_test.cC validation programgpio_out.vOriginal single-register GPIO IP (Task-2, kept for reference)gpio_test.cTask-2 C test program (kept for reference)riscv.vModified SoC top-level with GPIO v2 integratedice40_primitives.vSimulation stubs for iCE40 hardware primitives
+---
 
-References
+## Key Learnings
 
-VSDSquadron FPGA Repo
-VSDFPGA Labs
-Designing Memory-mapped Peripheral IPs in RTL
+- Task-2 had 1 register. Task-3 has 3 registers with proper address offset decoding.
+- `addr[3:2]` selects which register inside the GPIO module — same concept as `mem_addr[22]` selects IO vs RAM in the SoC.
+- Direction register (`GPIO_DIR`) gates the output: `gpio_out = GPIO_DATA & GPIO_DIR`. Pins with DIR=0 are not driven.
+- Keeping `gpio_out.v` (Task-2) and creating a new `gpio_out_v2.v` (Task-3) is the professional way to version RTL — old code stays safe.
+- The `addr` port must be connected in the SoC instantiation for offset decoding to work — missing this was the root cause of READ=0 during debugging.
+- Clean synchronous design (all writes in `always @(posedge clk)`) prevents latch behavior.
+
+---
+
+## Files in This Repository
+
+| File | Description |
+|------|-------------|
+| `gpio_out_v2.v` | Multi-register GPIO IP RTL (Task-3) |
+| `gpio_v2_test.c` | C validation program |
+| `gpio_out.v` | Original single-register GPIO IP (Task-2, kept for reference) |
+| `gpio_test.c` | Task-2 C test program (kept for reference) |
+| `riscv.v` | Modified SoC top-level with GPIO v2 integrated |
+| `ice40_primitives.v` | Simulation stubs for iCE40 hardware primitives |
+
+---
+
+## References
+
+- [VSDSquadron FPGA Repo](https://github.com/vsdip/vsd-riscv2)
+- [VSDFPGA Labs](https://github.com/vsdip/vsdfpga_labs)
+- [Designing Memory-mapped Peripheral IPs in RTL](https://chipmunklogic.com/digital-logic-design/designing-memory-mapped-peripheral-ips-in-rtl/)

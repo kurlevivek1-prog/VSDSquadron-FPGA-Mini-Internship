@@ -1,0 +1,10 @@
+*.vcd
+*.bin
+*.asc
+*.json
+*.timings
+*.o
+*.elf
+a.out
+test_timer
+sim_*
