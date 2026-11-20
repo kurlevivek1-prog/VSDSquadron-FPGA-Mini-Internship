@@ -72,12 +72,16 @@ picocom -b 9600 /dev/ttyUSB0 --imap lfcrlf,crcrlf --omap delbs,crlf
 LOAD calculation: `12,000,000 / 256 = 46,875 ticks/s`, so 10 s = `46,875 × 10 = 468,750`.
 
 ![UART output](images/uart_output.png)
+
+**Earlier hardware run — true periodic mode (MODE=1).** The CPU wrote LOAD = 468750 and CTRL (EN, MODE=periodic, PRESC=255) once, then only polled and cleared TIMEOUT. The Timer IP reloaded itself and raised TIMEOUT repeatedly, toggling the LED each time. (The timeout counter digit did not print in this run because of a print-helper bug that was fixed in later firmware.)
+
+![Hardware periodic UART log](images/hardware_periodic_uart.jpg)
 ![Board](images/board_photo.png)
 
 **Demo video:** *(add your Google Drive / YouTube link here)*
 
 ### Honest scope notes
-- The auto-reload (periodic, MODE=1) behaviour is verified in **simulation**. In the hardware demo the CPU re-arms the timer in one-shot mode each cycle so that the single timer stays dedicated to the 10 s countdown.
+- Periodic mode (MODE=1) is verified in **simulation** and in an earlier **hardware run** (log above). The `timer_blink.c` demo repeats by re-arming the timer in one-shot mode each cycle; `timer_blink_periodic.c` uses the IP's own auto-reload.
 - Blink and pause delays in the demo use calibrated software loops, not the Timer IP.
 - To get the on-board LED working, the SoC drives it through `SB_RGBA_DRV`, and the reset input is tied low (the board RESET button is therefore inactive). See the [Integration Guide](../ip/timer_ip/docs/Integration_Guide.md).
 
